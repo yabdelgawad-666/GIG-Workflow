@@ -1,10 +1,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { 
+  ArrowLeft, Save, Clock, Phone, File, Trash2, UploadCloud, 
+  FileText, Plus, Search, AlertTriangle, CheckSquare, X, 
+  Building, ChevronRight, AlertCircle 
+} from 'lucide-react';
+
 import { CRMLead, CRMStage, CRMChannel, CRMProduct, User, QRFType, Attachment, CRMCompany } from '../../types';
 import { appService } from '../../services/appService';
 import Button from '../../components/Button';
-import { ArrowLeft, Save, Clock, Phone, File, Trash2, UploadCloud, FileText, Plus, Search, AlertTriangle, CheckSquare, X } from 'lucide-react';
 
 interface CRMLeadFormProps {
   user: User;
@@ -21,10 +26,52 @@ const STAGES = Object.values(CRMStage);
 const CHANNELS = Object.values(CRMChannel);
 const PRODUCTS = Object.values(CRMProduct);
 
+/**
+ * Helper: Levenshtein Distance Algorithm
+ * Calculates the number of edits (insertions, deletions, substitutions) 
+ * required to change string 'a' into string 'b'.
+ */
+const getLevenshteinDistance = (a: string, b: string): number => {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  
+  const matrix: number[][] = [];
+
+  // Increment along the first column of each row
+  for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+  }
+
+  // Increment each column in the first row
+  for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+  }
+
+  // Fill in the rest of the matrix
+  for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+          if (b.charAt(i - 1) === a.charAt(j - 1)) {
+              matrix[i][j] = matrix[i - 1][j - 1];
+          } else {
+              matrix[i][j] = Math.min(
+                  matrix[i - 1][j - 1] + 1, // substitution
+                  Math.min(
+                      matrix[i][j - 1] + 1, // insertion
+                      matrix[i - 1][j] + 1 // deletion
+                  )
+              );
+          }
+      }
+  }
+
+  return matrix[b.length][a.length];
+};
+
 const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const companySearchInputRef = useRef<HTMLInputElement>(null);
   
   const isNew = !id || id === 'new';
 
@@ -56,10 +103,12 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
   // Company Management State
   const [availableCompanies, setAvailableCompanies] = useState<CRMCompany[]>([]);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
-  const [newCompanyName, setNewCompanyName] = useState('');
-  const [newCompanyStep, setNewCompanyStep] = useState<0 | 1 | 2>(0); // 0: Input, 1: Warning, 2: Confirmation
-  const [similarCompanyName, setSimilarCompanyName] = useState('');
-  const [confirmNewCompany, setConfirmNewCompany] = useState(false);
+  
+  // Modal Internal State
+  const [companySearch, setCompanySearch] = useState('');
+  const [filteredCompanies, setFilteredCompanies] = useState<CRMCompany[]>([]);
+  const [showCreateConfirmation, setShowCreateConfirmation] = useState(false);
+  const [confirmCheckbox, setConfirmCheckbox] = useState(false);
 
   // Notes State
   const [notes, setNotes] = useState<Note[]>([
@@ -74,6 +123,64 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
     }
     loadCompanies();
   }, [id]);
+
+  // Focus management for Modal
+  useEffect(() => {
+      if (isCompanyModalOpen && companySearchInputRef.current) {
+          setTimeout(() => companySearchInputRef.current?.focus(), 100);
+      }
+      
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.key === 'Escape' && isCompanyModalOpen) {
+              setIsCompanyModalOpen(false);
+          }
+      };
+      
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCompanyModalOpen]);
+
+  // Fuzzy Search Effect
+  useEffect(() => {
+      if (!companySearch.trim()) {
+          setFilteredCompanies(availableCompanies.slice(0, 8)); // Show default suggestions
+          return;
+      }
+
+      const lowerSearch = companySearch.toLowerCase();
+      
+      const matches = availableCompanies.filter(c => {
+          const lowerName = c.name.toLowerCase();
+          
+          // 1. Direct substring match (Fastest)
+          if (lowerName.includes(lowerSearch)) return true;
+
+          // 2. Fuzzy match (Levenshtein)
+          const dist = getLevenshteinDistance(lowerSearch, lowerName);
+          
+          // Tolerance Logic:
+          // Allow 2 errors max, or 40% of the word length for longer words.
+          const threshold = Math.max(2, Math.floor(lowerName.length * 0.4));
+          
+          return dist <= threshold;
+      }).sort((a, b) => {
+          const aName = a.name.toLowerCase();
+          const bName = b.name.toLowerCase();
+          
+          // Sort Priority: 
+          // 1. Starts with search term
+          // 2. Contains search term
+          // 3. Fuzzy match
+          const aStarts = aName.startsWith(lowerSearch);
+          const bStarts = bName.startsWith(lowerSearch);
+          
+          if (aStarts && !bStarts) return -1;
+          if (!aStarts && bStarts) return 1;
+          return 0;
+      });
+
+      setFilteredCompanies(matches);
+  }, [companySearch, availableCompanies]);
 
   const loadLead = async (leadId: string) => {
     const leads = await appService.getCRMLeads();
@@ -106,53 +213,43 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
       };
 
       setNotes(prev => [newNote, ...prev]);
-      // Also log to system logs
       await appService.logActivity('CRM Note', `Note on ${lead.title}: ${noteInput}`);
-      
       setNoteInput('');
   };
 
-  // --- Company Modal Logic ---
+  // --- Company Selection Logic ---
   const openCompanyModal = () => {
-      setNewCompanyName('');
-      setSimilarCompanyName('');
-      setNewCompanyStep(0);
-      setConfirmNewCompany(false);
+      setCompanySearch('');
+      setShowCreateConfirmation(false);
+      setConfirmCheckbox(false);
       setIsCompanyModalOpen(true);
   };
 
-  const handleCheckCompany = async () => {
-      if (!newCompanyName.trim()) return;
+  const selectCompany = (name: string) => {
+      setLead(prev => ({ ...prev, companyName: name }));
+      setIsCompanyModalOpen(false);
+  };
+
+  const initiateCreateCompany = () => {
+      if (!companySearch.trim()) return;
       
-      const similar = await appService.findSimilarCompany(newCompanyName);
-      if (similar) {
-          setSimilarCompanyName(similar.name);
-          setNewCompanyStep(1); // Go to Warning
+      // If there are matches, show confirmation screen
+      if (filteredCompanies.length > 0) {
+          setShowCreateConfirmation(true);
       } else {
-          // No similarity, add directly
-          await performAddCompany(newCompanyName);
+          // No matches, create directly
+          finalizeCreateCompany();
       }
   };
 
-  const performAddCompany = async (name: string) => {
-      const added = await appService.addCompany(name);
+  const finalizeCreateCompany = async () => {
+      const added = await appService.addCompany(companySearch);
       setAvailableCompanies(prev => [...prev, added]);
       setLead(prev => ({ ...prev, companyName: added.name }));
       setIsCompanyModalOpen(false);
   };
 
-  const handleConfirmWarning = () => {
-      setNewCompanyStep(2); // Go to Final Confirmation
-  };
-
-  const handleFinalAdd = async () => {
-      if (confirmNewCompany) {
-          await performAddCompany(newCompanyName);
-      }
-  };
-
   const createQrf = () => {
-      // Logic to jump to QRF creation pre-filled
       let type = QRFType.MEDICAL;
       if (lead.product === CRMProduct.LIFE) type = QRFType.LIFE;
       if (lead.product === CRMProduct.PENSION) type = QRFType.PENSION;
@@ -170,11 +267,9 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
       navigate('/qrf/new', { state: { types: [type], initialData: initialData } });
   };
 
-  // --- Document Handling ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
     const newAttachments: Attachment[] = [];
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -183,16 +278,8 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
             reader.onloadend = () => resolve(reader.result as string);
             reader.readAsDataURL(file);
         });
-        newAttachments.push({
-            id: `att_${Date.now()}_${i}`,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            uploadedAt: new Date().toISOString(),
-            data: base64
-        });
+        newAttachments.push({ id: `att_${Date.now()}_${i}`, name: file.name, size: file.size, type: file.type, uploadedAt: new Date().toISOString(), data: base64 });
     }
-    
     const updatedLead = { ...lead, attachments: [...(lead.attachments || []), ...newAttachments] };
     setLead(updatedLead);
     await appService.saveCRMLead(updatedLead);
@@ -209,14 +296,8 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
       if (lead.product === CRMProduct.LIFE) {
           return (
               <div className="grid grid-cols-2 gap-6">
-                  <div>
-                      <label className="block text-sm font-semibold text-gray-700">Initial Life Quote</label>
-                      <input type="number" className="mt-1 w-full border rounded p-2 text-sm" value={lead.initialLifeQuote || ''} onChange={e => handleChange('initialLifeQuote', parseFloat(e.target.value))} />
-                  </div>
-                  <div>
-                      <label className="block text-sm font-semibold text-gray-700">Final Life Quote</label>
-                      <input type="number" className="mt-1 w-full border rounded p-2 text-sm" value={lead.finalLifeQuote || ''} onChange={e => handleChange('finalLifeQuote', parseFloat(e.target.value))} />
-                  </div>
+                  <div><label className="block text-sm font-semibold text-gray-700">Initial Life Quote</label><input type="number" className="mt-1 w-full border rounded p-2 text-sm" value={lead.initialLifeQuote || ''} onChange={e => handleChange('initialLifeQuote', parseFloat(e.target.value))} /></div>
+                  <div><label className="block text-sm font-semibold text-gray-700">Final Life Quote</label><input type="number" className="mt-1 w-full border rounded p-2 text-sm" value={lead.finalLifeQuote || ''} onChange={e => handleChange('finalLifeQuote', parseFloat(e.target.value))} /></div>
               </div>
           );
       }
@@ -268,74 +349,133 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
 
   return (
     <div className="flex h-[calc(100vh-100px)] relative">
-      {/* COMPANY MODAL */}
+      {/* COMPANY SELECTION MODAL */}
       {isCompanyModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full overflow-hidden animate-fade-in-down">
-                  <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                      <h3 className="text-lg font-bold text-gray-900">Add New Company</h3>
-                      <button onClick={() => setIsCompanyModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20}/></button>
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm p-4 pt-20 animate-fade-in-down">
+              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[80vh]">
+                  
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                          <Building className="mr-2 text-brand-600" size={20}/> 
+                          {showCreateConfirmation ? 'Confirm New Company' : 'Select Company'}
+                      </h3>
+                      <button onClick={() => setIsCompanyModalOpen(false)} className="text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 p-1"><X size={20}/></button>
                   </div>
                   
-                  <div className="p-8">
-                      {/* Step 0: Input */}
-                      {newCompanyStep === 0 && (
-                          <div className="space-y-4">
-                              <label className="block text-sm font-medium text-gray-700">Company Name</label>
-                              <input 
-                                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-lg"
-                                  placeholder="Enter official company name"
-                                  value={newCompanyName}
-                                  onChange={e => setNewCompanyName(e.target.value)}
-                                  autoFocus
-                              />
-                              <div className="pt-4 flex justify-end">
-                                  <Button onClick={handleCheckCompany} disabled={!newCompanyName.trim()}>Next</Button>
-                              </div>
-                          </div>
-                      )}
+                  {/* Modal Content */}
+                  <div className="flex-1 overflow-hidden flex flex-col">
+                      
+                      {!showCreateConfirmation ? (
+                          <>
+                            {/* Search Input Area */}
+                            <div className="p-6 pb-2">
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
+                                    <input 
+                                        ref={companySearchInputRef}
+                                        className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-brand-500 focus:ring-4 focus:ring-brand-50 outline-none text-lg transition-all"
+                                        placeholder="Type company name to search or create..."
+                                        value={companySearch}
+                                        onChange={e => setCompanySearch(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                                {companySearch && filteredCompanies.length > 0 && (
+                                    <div className="mt-3 flex items-start text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg text-sm border border-yellow-100 animate-pulse">
+                                        <AlertTriangle size={16} className="mr-2 mt-0.5 shrink-0"/>
+                                        <span>Caution: Similar companies found. Please check the list below before creating a new one.</span>
+                                    </div>
+                                )}
+                            </div>
 
-                      {/* Step 1: Warning */}
-                      {newCompanyStep === 1 && (
-                          <div className="space-y-6">
-                              <div className="flex items-start bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
-                                  <AlertTriangle className="text-yellow-600 mr-3 mt-1 shrink-0" size={24} />
-                                  <div>
-                                      <h4 className="font-bold text-yellow-800 text-lg mb-1">Similar Company Found</h4>
-                                      <p className="text-yellow-700 mb-2">There is a company saved with a similar name: <br/><span className="font-bold text-black block mt-1 text-xl">"{similarCompanyName}"</span></p>
-                                      <p className="text-sm text-yellow-800">Are you sure you want to add a new company record instead of selecting the existing one?</p>
+                            {/* List Area */}
+                            <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
+                                <div className="space-y-2">
+                                    {filteredCompanies.map(c => (
+                                        <button 
+                                            key={c.id} 
+                                            onClick={() => selectCompany(c.name)}
+                                            className="w-full text-left p-4 rounded-xl border border-gray-100 hover:border-brand-300 hover:bg-brand-50 hover:shadow-sm transition-all group flex justify-between items-center"
+                                        >
+                                            <div>
+                                                <span className="font-bold text-gray-800 group-hover:text-brand-700">{c.name}</span>
+                                                {c.industry && <span className="block text-xs text-gray-500 mt-0.5">{c.industry}</span>}
+                                            </div>
+                                            <ChevronRight size={16} className="text-gray-300 group-hover:text-brand-500"/>
+                                        </button>
+                                    ))}
+                                    
+                                    {filteredCompanies.length === 0 && companySearch && (
+                                        <div className="text-center py-8 text-gray-500">
+                                            <Building size={40} className="mx-auto mb-2 text-gray-300"/>
+                                            <p>No existing companies match "{companySearch}"</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Create Action Footer */}
+                            {companySearch.trim().length > 0 && (
+                                <div className="p-4 border-t border-gray-100 bg-gray-50 shrink-0">
+                                    <button 
+                                        onClick={initiateCreateCompany}
+                                        className="w-full flex items-center justify-center py-3 px-4 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium transition-colors shadow-sm hover:shadow"
+                                    >
+                                        <Plus size={20} className="mr-2"/>
+                                        Create "{companySearch}" as new Company
+                                    </button>
+                                </div>
+                            )}
+                          </>
+                      ) : (
+                          // Confirmation View
+                          <div className="p-8 flex flex-col h-full">
+                              <div className="flex-1">
+                                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 mb-6">
+                                      <h4 className="text-orange-800 font-bold text-lg mb-2 flex items-center">
+                                          <AlertCircle size={20} className="mr-2"/>
+                                          Duplicate Warning
+                                      </h4>
+                                      <p className="text-orange-700 mb-4">
+                                          You are about to create <span className="font-bold text-black">"{companySearch}"</span>.
+                                      </p>
+                                      <p className="text-sm text-orange-800 mb-2">We found similar existing companies:</p>
+                                      <ul className="list-disc list-inside space-y-1 text-sm text-orange-900 font-medium ml-2">
+                                          {filteredCompanies.slice(0, 3).map(c => (
+                                              <li key={c.id}>{c.name}</li>
+                                          ))}
+                                          {filteredCompanies.length > 3 && <li>...and {filteredCompanies.length - 3} more</li>}
+                                      </ul>
                                   </div>
-                              </div>
-                              <div className="flex justify-end gap-3 pt-2">
-                                  <Button variant="outline" onClick={() => setIsCompanyModalOpen(false)}>Cancel</Button>
-                                  <Button onClick={handleConfirmWarning} className="bg-yellow-600 hover:bg-yellow-700 text-white">Yes, proceed</Button>
-                              </div>
-                          </div>
-                      )}
 
-                      {/* Step 2: Final Confirmation */}
-                      {newCompanyStep === 2 && (
-                          <div className="space-y-6">
-                              <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
-                                  <h4 className="font-bold text-red-800 mb-2">Final Confirmation</h4>
-                                  <p className="text-sm text-red-700">Creating duplicate company records can fragment data. Please confirm you have verified this is a distinct entity.</p>
+                                  <label className="flex items-start p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
+                                      <input 
+                                          type="checkbox" 
+                                          className="mt-1 mr-3 w-5 h-5 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
+                                          checked={confirmCheckbox}
+                                          onChange={e => setConfirmCheckbox(e.target.checked)}
+                                      />
+                                      <span className="text-sm text-gray-700 font-medium leading-relaxed">
+                                          I have reviewed the similar companies listed above and verify that <span className="font-bold">"{companySearch}"</span> is a distinct, new entity.
+                                      </span>
+                                  </label>
                               </div>
-                              
-                              <label className="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                  <input 
-                                      type="checkbox" 
-                                      className="mt-1 mr-3 w-5 h-5 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
-                                      checked={confirmNewCompany}
-                                      onChange={e => setConfirmNewCompany(e.target.checked)}
-                                  />
-                                  <span className="text-sm text-gray-700 font-medium leading-relaxed">
-                                      I have reviewed the similar company "{similarCompanyName}" and agree to add a new one named "{newCompanyName}".
-                                  </span>
-                              </label>
 
-                              <div className="flex justify-end gap-3 pt-2">
-                                  <Button variant="outline" onClick={() => setIsCompanyModalOpen(false)}>Cancel</Button>
-                                  <Button onClick={handleFinalAdd} disabled={!confirmNewCompany} className="bg-red-600 hover:bg-red-700 text-white">Create Company</Button>
+                              <div className="flex gap-3 pt-6 mt-auto">
+                                  <button 
+                                      onClick={() => setShowCreateConfirmation(false)} 
+                                      className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                                  >
+                                      Back to List
+                                  </button>
+                                  <button 
+                                      onClick={finalizeCreateCompany} 
+                                      disabled={!confirmCheckbox}
+                                      className="flex-1 py-3 px-4 bg-brand-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl hover:bg-brand-700 transition-colors shadow-sm"
+                                  >
+                                      Confirm & Create
+                                  </button>
                               </div>
                           </div>
                       )}
@@ -400,24 +540,14 @@ const CRMLeadForm: React.FC<CRMLeadFormProps> = ({ user }) => {
                     </div>
                     <div className="flex items-center">
                         <label className="w-32 text-sm font-bold text-gray-700">Company</label>
-                        <div className="flex-1 flex space-x-2">
-                            <select 
-                                className="flex-1 border-b border-gray-300 focus:border-brand-500 outline-none py-1 text-sm bg-white"
-                                value={lead.companyName}
-                                onChange={e => handleChange('companyName', e.target.value)}
-                            >
-                                <option value="">Select Company...</option>
-                                {availableCompanies.map(c => (
-                                    <option key={c.id} value={c.name}>{c.name}</option>
-                                ))}
-                            </select>
-                            <button 
-                                onClick={openCompanyModal}
-                                className="bg-brand-600 text-white rounded p-1 hover:bg-brand-700 transition-colors"
-                                title="Add New Company"
-                            >
-                                <Plus size={16} />
-                            </button>
+                        <div 
+                            className="flex-1 flex items-center border-b border-gray-300 cursor-pointer hover:border-brand-500 group py-1"
+                            onClick={openCompanyModal}
+                        >
+                            <span className={`text-sm flex-1 ${lead.companyName ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
+                                {lead.companyName || 'Select or create company...'}
+                            </span>
+                            <Search size={14} className="text-gray-400 group-hover:text-brand-500"/>
                         </div>
                     </div>
                     <div className="flex items-center">

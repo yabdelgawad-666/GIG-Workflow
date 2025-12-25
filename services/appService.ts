@@ -526,7 +526,14 @@ class AppService {
       return newCompany;
   }
 
-  // Levenshtein Distance Algorithm
+  /**
+   * Calculates Levenshtein Distance between two strings.
+   * This is a string metric for measuring the difference between two sequences.
+   * Used for fuzzy search matching.
+   * @param a Source string
+   * @param b Target string
+   * @returns Number of edits required to transform a to b
+   */
   private levenshteinDistance(a: string, b: string): number {
       if (a.length === 0) return b.length;
       if (b.length === 0) return a.length;
@@ -563,6 +570,12 @@ class AppService {
       return matrix[b.length][a.length];
   }
 
+  /**
+   * Finds a similar company based on fuzzy string matching.
+   * Uses Levenshtein distance with a dynamic threshold.
+   * @param name Company name to check
+   * @returns CRMCompany if a match is found within threshold, null otherwise
+   */
   async findSimilarCompany(name: string): Promise<CRMCompany | null> {
       const allCompanies = await this.getCompanies();
       const target = name.toLowerCase().trim();

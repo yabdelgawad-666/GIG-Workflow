@@ -61,14 +61,24 @@ export const INITIAL_USERS: User[] = [
 ];
 
 export const INITIAL_COMPANIES: CRMCompany[] = [
-    { id: 'c1', name: 'Bashar Soft', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c2', name: 'Ahly Bank', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c3', name: 'CIB Egypt', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c4', name: 'Yodawy', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c5', name: 'Egypreneur', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c6', name: 'ABC Bank', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c7', name: 'Vodafone Egypt', createdAt: '2025-01-01T00:00:00Z' },
-    { id: 'c8', name: 'Etisalat Misr', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c1', name: 'Bashar Soft', industry: 'Technology', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c2', name: 'Ahly Bank', industry: 'Banking', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c3', name: 'CIB Egypt', industry: 'Banking', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c4', name: 'Yodawy', industry: 'Healthcare', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c5', name: 'Egypreneur', industry: 'Services', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c6', name: 'ABC Bank', industry: 'Banking', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c7', name: 'Vodafone Egypt', industry: 'Telecom', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c8', name: 'Etisalat Misr', industry: 'Telecom', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c9', name: 'Orange Egypt', industry: 'Telecom', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c10', name: 'Telecom Egypt (WE)', industry: 'Telecom', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c11', name: 'GIG Insurance', industry: 'Insurance', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c12', name: 'Allianz Egypt', industry: 'Insurance', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c13', name: 'AXA Egypt', industry: 'Insurance', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c14', name: 'Metlife', industry: 'Insurance', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c15', name: 'Hassan Allam', industry: 'Construction', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c16', name: 'Orascom Construction', industry: 'Construction', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c17', name: 'Ezz Steel', industry: 'Manufacturing', createdAt: '2025-01-01T00:00:00Z' },
+    { id: 'c18', name: 'El Sewedy Electric', industry: 'Manufacturing', createdAt: '2025-01-01T00:00:00Z' },
 ];
 
 export const INITIAL_QRFS: QRF[] = [
